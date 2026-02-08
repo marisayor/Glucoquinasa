@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cinética Enzimática Dinámica</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --hexo-color: #d97706;
+            --gluco-color: #b91c1c;
+            --bg-color: #fcfcfc;
+        }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: #e2e8f0;
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 850px;
+        }
+        h1 { color: #1e293b; text-align: center; margin-top: 0; font-size: 1.4rem; }
+        .instruction { text-align: center; color: #64748b; margin-bottom: 20px; font-style: italic; }
+        
+        .chart-container {
+            position: relative;
+            height: 250px;
+            width: 100%;
+            background: var(--bg-color);
+            border-radius: 12px;
+            padding: 10px;
+        }
+
+        .controls {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8fafc;
+            border-radius: 15px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .glucose-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #2563eb;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            appearance: none;
+            background: #cbd5e1;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            background: #2563eb;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        .legend-custom {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 15px;
+        }
+        .legend-item { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.9rem; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; }
+
+        .tooltip-custom {
+            margin-top: 15px;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            color: #334155;
+            min-height: 3em;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>Abstracción de la Cinética: Hexoquinasa vs Glucoquinasa</h1>
+    <p class="instruction">Desliza el control para observar cómo se forman las curvas de actividad enzimática.</p>
+
+    <div class="chart-container">
+        <canvas id="enzChart"></canvas>
+    </div>
+
+    <div class="controls">
+        <div class="slider-header">
+            <span>Concentración de Glucosa [S]</span>
+            <span class="glucose-value" id="sVal">0.0 mM</span>
+        </div>
+        <input type="range" id="sSlider" min="0" max="30" step="0.1" value="0">
+        
+                <div class="tooltip-custom" id="infoText">
+            Mueve el control para iniciar la reacción.
+        </div>
+    </div>
+</div>
+
+<script>
+    const ctx = document.getElementById('enzChart').getContext('2d');
+    
+    // Parámetros abstractos (representando las diferencias de Km y Vmax de forma visual)
+    const KM_HEXO = 0.1;
+    const VMAX_HEXO = 45; // Más baja visualmente
+    
+    const KM_GLUCO = 10.0;
+    const VMAX_GLUCO = 100; // Más alta visualmente
+
+    let currentS = 0;
+    
+    // Arrays para ir guardando los puntos recorridos
+    let pathHexo = [{x: 0, y: 0}];
+    let pathGluco = [{x: 0, y: 0}];
+
+    const calcV = (s, vmax, km) => (vmax * s) / (km + s);
+
+    const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            datasets: [
+                {
+                    label: 'Hexoquinasa',
+                    data: pathHexo,
+                    borderColor: '#d97706',
+                    borderWidth: 4,
+                    pointRadius: 0,
+                    tension: 0.2,
+                    fill: false
+                },
+                {
+                    label: 'Glucoquinasa',
+                    data: pathGluco,
+                    borderColor: '#b91c1c',
+                    borderWidth: 4,
+                    pointRadius: 0,
+                    tension: 0.2,
+                    fill: false
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 0 }, // Animación manual vía slider
+            scales: {
+                x: {
+                    type: 'linear',
+                    position: 'bottom',
+                    title: { display: true, text: 'Glucosa en sangre (mM)', font: { weight: 'bold' } },
+                    min: 0,
+                    max: 30,
+                    grid: { color: '#f1f5f9' }
+                },
+                y: {
+                    title: { display: true, text: 'Actividad (Velocidad)', font: { weight: 'bold' } },
+                    min: 0,
+                    max: 110,
+                    ticks: { display: false }, // Abstracción de valores reales de velocidad
+                    grid: { color: '#f1f5f9' }
+                }
+            },
+            plugins: {
+                legend: { display: false }
+            }
+        },
+        plugins: [{
+            id: 'ayunoLine',
+            afterDraw: (chart) => {
+                const {ctx, scales: {x, y}} = chart;
+                ctx.save();
+                // Línea de Ayuno (5 mM)
+                ctx.setLineDash([5, 5]);
+                ctx.strokeStyle = '#94a3b8';
+                ctx.beginPath();
+                ctx.moveTo(x.getPixelForValue(5), y.getPixelForValue(0));
+                ctx.lineTo(x.getPixelForValue(5), y.getPixelForValue(110));
+                ctx.stroke();
+                
+                ctx.fillStyle = '#64748b';
+                ctx.font = 'bold 12px sans-serif';
+                ctx.fillText('Ayuno (5 mM)', x.getPixelForValue(5.2), y.getPixelForValue(105));
+                ctx.restore();
+            }
+        }]
+    });
+
+    const slider = document.getElementById('sSlider');
+    const sValText = document.getElementById('sVal');
+    const infoText = document.getElementById('infoText');
+
+    slider.addEventListener('input', (e) => {
+        const s = parseFloat(e.target.value);
+        sValText.innerText = s.toFixed(1) + ' mM';
+        
+        // Generar nuevos puntos hasta el valor actual del slider
+        const newPathHexo = [];
+        const newPathGluco = [];
+        
+        for (let i = 0; i <= s; i += 0.2) {
+            newPathHexo.push({ x: i, y: calcV(i, VMAX_HEXO, KM_HEXO) });
+            newPathGluco.push({ x: i, y: calcV(i, VMAX_GLUCO, KM_GLUCO) });
+        }
+        
+        // Agregar el punto exacto actual
+        newPathHexo.push({ x: s, y: calcV(s, VMAX_HEXO, KM_HEXO) });
+        newPathGluco.push({ x: s, y: calcV(s, VMAX_GLUCO, KM_GLUCO) });
+
+        chart.data.datasets[0].data = newPathHexo;
+        chart.data.datasets[1].data = newPathGluco;
+        chart.update();
+
+        // Lógica de comentarios pedagógicos
+        if (s < 1) {
+            infoText.innerHTML = "Nota cómo la <strong>Hexoquinasa</strong> sube de inmediato. Su baja Km (0.1) le permite ser eficiente con mínima glucosa.";
+        } else if (s >= 4.5 && s <= 5.5) {
+            infoText.innerHTML = "En niveles de <strong>ayuno</strong>, la Hexoquinasa está saturada. La Glucoquinasa apenas está despertando.";
+        } else if (s > 10 && s < 20) {
+            infoText.innerHTML = "Tras una comida (hiperglucemia), la <strong>Glucoquinasa</strong> sigue subiendo su actividad. ¡No se satura fácilmente!";
+        } else if (s >= 25) {
+            infoText.innerHTML = "Diferencia clave: La Glucoquinasa tiene mucha más capacidad ($V_{max}$) para procesar grandes cargas de glucosa en el hígado.";
+        }
+    });
+</script>
+</body>
+</html>
